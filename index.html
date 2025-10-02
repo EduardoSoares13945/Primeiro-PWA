@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width">
+    <title>Lugares Próximos de Você</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/icon-192.png" sizes="192x192">
+    <meta name="theme-color" content="#1976d2">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background: #121212;
+            color: #f0f0f0;
+        }
+
+        header {
+            padding: 20px;
+            text-align: center;
+            background: #1e1e1e;
+            position: sticky;
+            top: 0;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        input {
+            padding: 10px;
+            width: 250px;
+            max-width: 90vw;
+            border-radius: 8px;
+            border: none;
+        }
+
+        button {
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: none;
+            background: #4cafef;
+            color: white;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        button:hover {
+            background: #3a9edc;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+            padding: 20px;
+        }
+
+        .card {
+            background: #1f1f1f;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+            transition: transform 0.2s;
+        }
+
+        .card:hover {
+            transform: scale(1.02);
+        }
+
+        .card-content {
+            padding: 12px;
+        }
+
+        .title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .meta {
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        @media (max-width: 480px) {
+            .title {
+                font-size: 14px;
+            }
+
+            .meta {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(function (registration) {
+                        console.log('ServiceWorker registrado com sucesso:', registration.scope);
+                    }, function (err) {
+                        console.log('Falha ao registrar o ServiceWorker:', err);
+                    });
+            });
+        }
+    </script>
+
+    <header>
+        <input id="q" type="search" placeholder="Filtrar por palavra-chave (opcional)">
+        <button id="btn">Buscar lugares próximos</button>
+    </header>
+
+    <main>
+        <div id="status" style="text-align:center;margin-top:20px;"></div>
+        <div id="results" class="grid"></div>
+    </main>
+
+    <script>
+        async function buscarLugares(keyword) {
+            const statusDiv = document.getElementById("status");
+            const resultsDiv = document.getElementById("results");
+            statusDiv.textContent = "Obtendo sua localização...";
+            resultsDiv.innerHTML = "";
+
+            try {
+                const pos = await new Promise((resolve, reject) => {
+                    if (!navigator.geolocation) return reject("Geolocalização não suportada.");
+                    navigator.geolocation.getCurrentPosition(
+                        p => resolve(p),
+                        () => reject("Não foi possível obter sua localização."),
+                        { timeout: 10000 }
+                    );
+                });
+
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+
+                statusDiv.textContent = "Buscando lugares próximos...";
+
+                let url = `https://pt.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=20&format=json&origin=*`;
+
+                if (keyword) {
+                    url += `&gssearch=${encodeURIComponent(keyword)}`;
+                }
+
+                const resp = await fetch(url);
+                const data = await resp.json();
+
+                const locais = (data.query?.geosearch || []).filter(lugar =>
+                    !keyword || lugar.title.toLowerCase().includes(keyword.toLowerCase())
+                );
+
+                if (locais.length === 0) {
+                    statusDiv.textContent = "Nenhum local encontrado próximo a você.";
+                    return;
+                }
+
+                statusDiv.textContent = "";
+                locais.forEach(lugar => {
+                    resultsDiv.innerHTML += `
+    <div class="card">
+      <div class="card-content">
+        <div class="title">${lugar.title}</div>
+        <div class="meta">
+          Distância: ${(lugar.dist / 1000).toFixed(2)} km<br>
+          <a href="https://pt.wikipedia.org/wiki/${encodeURIComponent(lugar.title)}" target="_blank" style="color:#4cafef;">Ver na Wikipedia</a>
+        </div>
+      </div>
+    </div>
+  `;
+                });
+
+
+            } catch (err) {
+                statusDiv.textContent = typeof err === "string" ? err : "Erro ao buscar lugares.";
+                console.error(err);
+            }
+        }
+
+        document.getElementById("btn").addEventListener("click", () => {
+            const q = document.getElementById("q").value.trim();
+            buscarLugares(q);
+        });
+
+        document.getElementById("q").addEventListener("keydown", e => {
+            if (e.key === "Enter") document.getElementById("btn").click();
+        });
+
+        window.addEventListener('DOMContentLoaded', () => buscarLugares(''));
+    </script>
+</body>
+
+</html>
